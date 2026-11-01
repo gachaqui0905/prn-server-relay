@@ -38,8 +38,34 @@ function describeStudent(session) {
   const rows = [name && ["Nom", name], className && ["Classe", className], school && ["Établissement", school]].filter(Boolean);
   return { name, className, school, rows };
 }
+// L'adresse d'un code QR est normalement celle du dossier PRONOTE (…/pronote). Si elle se termine par une page
+// (mobile.eleve.html, eleve.html…), on la retire pour que la bibliothèque ajoute elle-même la bonne page.
+function normalizeUrl(u) {
+  try {
+    const x = new URL(u);
+    x.search = ""; x.hash = "";
+    x.pathname = x.pathname.replace(/\/[^/]*\.html?$/i, "").replace(/\/+$/, "");
+    return x.toString().replace(/\/$/, "");
+  } catch { return u; }
+}
+// Essaie l'adresse telle qu'elle figure dans le code QR, puis sans la page finale. On ne passe à la forme suivante
+// que si PRONOTE répond que la page n'existe pas ; toute autre erreur (PIN, jeton) est renvoyée telle quelle.
+function urlForms(u) { return [...new Set([u, normalizeUrl(u)])]; }
+function pageMissing(e) { return /does not exist|n'existe pas|not found|404|introuvable/i.test(text(e?.message || e)); }
+async function tryForms(url, attempt) {
+  let last;
+  for (const form of urlForms(url)) {
+    try { return await attempt(form); }
+    catch (e) {
+      last = e;
+      console.error(new Date().toISOString(), "login url", (() => { try { const x = new URL(form); return x.origin + x.pathname; } catch { return "?"; } })(), "->", e?.name || "Error", text(e?.message || e));
+      if (!pageMissing(e)) break;
+    }
+  }
+  throw last;
+}
 function loginError(e) {
-  const err = new Error("Connexion refusée : " + text(e?.message || e));
+  const err = new Error("Connexion refusée : " + text(e?.message || e) + (e?.name && e.name !== "Error" ? " (" + e.name + ")" : ""));
   err.status = 401; err.code = "login_failed"; err.expose = true;
   return err;
 }
@@ -49,19 +75,23 @@ export default {
 
   async loginQr({ qr, pin, deviceUUID }) {
     const p = await lib();
-    const handle = p.createSessionHandle();
     try {
-      const refresh = await p.loginQrCode(handle, { deviceUUID, pin, qr });
-      return { handle, creds: toCreds(refresh), student: describeStudent(handle) };
+      return await tryForms(qr.url, async (url) => {
+        const handle = p.createSessionHandle();
+        const refresh = await p.loginQrCode(handle, { deviceUUID, pin, qr: { ...qr, url } });
+        return { handle, creds: toCreds(refresh), student: describeStudent(handle) };
+      });
     } catch (e) { throw loginError(e); }
   },
 
   async loginToken({ url, kind, username, token, deviceUUID }) {
     const p = await lib();
-    const handle = p.createSessionHandle();
     try {
-      const refresh = await p.loginToken(handle, { url, kind: kind ?? p.AccountKind.STUDENT, username, token, deviceUUID });
-      return { handle, creds: toCreds(refresh), student: describeStudent(handle) };
+      return await tryForms(url, async (u) => {
+        const handle = p.createSessionHandle();
+        const refresh = await p.loginToken(handle, { url: u, kind: kind ?? p.AccountKind.STUDENT, username, token, deviceUUID });
+        return { handle, creds: toCreds(refresh), student: describeStudent(handle) };
+      });
     } catch (e) { throw loginError(e); }
   },
 
