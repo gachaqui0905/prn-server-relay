@@ -1,0 +1,14 @@
+{
+  "name": "carnet-de-classe-relais",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node index.js",
+    "mock": "MOCK=1 node index.js"
+  },
+  "dependencies": {
+    "pawnote": "^1.0.0"
+  }
+}
