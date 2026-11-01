@@ -83,7 +83,7 @@ function auth(req) {
 }
 
 const routes = {
-  "GET /health": async () => ({ ok: true, source: source.name, mock: MOCK }),
+  "GET /health": async () => ({ ok: true, source: source.name, mock: MOCK, ...(source.version ? { pawnote: await source.version() } : {}) }),
 
   // Première connexion : contenu du code QR + code PIN à 4 chiffres choisi dans PRONOTE.
   "POST /api/login/qr": async (req, body) => {
